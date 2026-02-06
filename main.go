@@ -81,16 +81,20 @@ func handlePublish(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(5 * time.Second)
 		log.Printf("⏳ Iniciando captura de thumbnail...")
 
-		// ✅ IMPORTANTE: Agregar vhost para conectarse al stream correcto
+		// ✅ RTMP con vhost para conectarse al stream correcto
 		rtmpURL := fmt.Sprintf("rtmp://srs:1935/%s/%s?vhost=51.210.109.197", appName, streamID)
 		outputPath := "/app/thumbnails/" + fileName
 		
 		log.Printf("🔗 RTMP URL: %s", rtmpURL)
 		log.Printf("💾 Output: %s", outputPath)
 		
-		// ✅ Usar timeout para evitar bloqueos + capturar 1 frame
-		cmd := exec.Command("sh", "-c", 
-			fmt.Sprintf("timeout 10 ffmpeg -y -i '%s' -vframes 1 -q:v 2 '%s'", rtmpURL, outputPath))
+		// ✅ Sin timeout - FFmpeg captura 1 frame y termina automáticamente
+		cmd := exec.Command("ffmpeg", 
+			"-y",
+			"-i", rtmpURL,
+			"-vframes", "1",
+			"-q:v", "2",
+			outputPath)
 
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -99,11 +103,11 @@ func handlePublish(w http.ResponseWriter, r *http.Request) {
 		activeProcesses[streamID] = cmd
 		mu.Unlock()
 
-		log.Printf("📸 FFmpeg iniciado con timeout de 10s...")
+		log.Printf("📸 FFmpeg iniciado, capturando 1 frame...")
 		if err := cmd.Run(); err != nil {
-			// timeout retorna exit code 124, verificar si el archivo se generó
+			// Verificar si el archivo se generó a pesar del error
 			if _, statErr := os.Stat(outputPath); statErr == nil {
-				log.Printf("✅ Thumbnail generado (con timeout): %s", fileName)
+				log.Printf("✅ Thumbnail generado: %s", fileName)
 			} else {
 				log.Printf("❌ Error FFmpeg: %v", err)
 			}
