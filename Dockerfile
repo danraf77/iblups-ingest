@@ -5,14 +5,16 @@ RUN apk add --no-cache ffmpeg
 
 WORKDIR /app
 
-# Copiamos archivos de dependencias primero (mejor caching de Docker)
+# Copiamos archivos de dependencias
 COPY go.mod go.sum ./
+
+# Descargamos dependencias
 RUN go mod download
 
 # Copiamos el código fuente
 COPY . .
 
-# Compilamos la aplicación
+# Compilamos
 RUN go build -o main .
 
 # Creamos directorio para thumbnails
