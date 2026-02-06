@@ -7,9 +7,9 @@ services:
     ports:
       - "1935:1935"
       - "1985:1985"
+      - "8080:8080" # ← Puerto HTTP-FLV
     volumes:
       - ./srs.conf:/usr/local/srs/conf/docker.conf
-      - snapshots:/snapshots # ← Volumen compartido
     restart: always
     networks:
       - srs-network
@@ -27,7 +27,6 @@ services:
       - .env
     volumes:
       - ./thumbnails:/app/thumbnails
-      - snapshots:/snapshots # ← Volumen compartido
     restart: always
     depends_on:
       - srs
@@ -37,6 +36,3 @@ services:
 networks:
   srs-network:
     driver: bridge
-
-volumes:
-  snapshots: # ← Volumen compartido entre SRS y backend-go

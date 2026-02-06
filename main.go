@@ -66,52 +66,46 @@ func handlePublish(w http.ResponseWriter, r *http.Request) {
 		}
 
 		channelID := results[0].ID
-		finalFileName := getPersistentHash(channelID) + ".jpg"
-		srsSnapshotPath := fmt.Sprintf("/snapshots/%s/%s.jpg", appName, streamID)
-		finalPath := "/app/thumbnails/" + finalFileName
-		
-		log.Printf("✅ Canal encontrado (ID: %s). Esperando snapshot de SRS...", channelID)
+		fileName := getPersistentHash(channelID) + ".jpg"
+		log.Printf("✅ Canal encontrado (ID: %s). Generando thumbnail: %s", channelID, fileName)
 
-		// Actualizar DB inmediatamente
 		updateData := map[string]interface{}{
 			"is_on_live":  true,
 			"last_status": "online",
-			"cover":       finalFileName,
+			"cover":       fileName,
 			"modified":    time.Now().Format(time.RFC3339),
 		}
+		
 		client.From("channels_channel").Update(updateData, "", "").Eq("id", channelID).Execute()
 
-		// Esperar a que SRS genere el snapshot (puede tardar unos segundos)
-		maxRetries := 30 // 30 segundos máximo
-		for i := 0; i < maxRetries; i++ {
-			time.Sleep(1 * time.Second)
-			
-			if _, err := os.Stat(srsSnapshotPath); err == nil {
-				// El snapshot existe, copiarlo
-				log.Printf("📸 Snapshot encontrado, copiando a: %s", finalFileName)
-				
-				// Crear directorio si no existe
-				os.MkdirAll(filepath.Dir(finalPath), 0755)
-				
-				// Copiar el archivo
-				copyCmd := exec.Command("cp", srsSnapshotPath, finalPath)
-				if err := copyCmd.Run(); err != nil {
-					log.Printf("❌ Error copiando snapshot: %v", err)
-				} else {
-					log.Printf("✅ Thumbnail generado exitosamente: %s", finalFileName)
-				}
-				return
-			}
-			
-			if i%5 == 0 && i > 0 {
-				log.Printf("⏳ Esperando snapshot... (%d/%d)", i, maxRetries)
-			}
-		}
+		// Esperar 3 segundos para que el stream esté disponible
+		time.Sleep(3 * time.Second)
+		log.Printf("⏳ Stream disponible, iniciando captura vía HTTP-FLV...")
+
+		// ✅ HTTP-FLV: Solo lectura, sin conflictos con OBS
+		httpFlvURL := fmt.Sprintf("http://srs:8080/%s/%s.flv", appName, streamID)
 		
-		log.Printf("⚠️ Timeout esperando snapshot para %s", streamID)
+		cmd := exec.Command("ffmpeg", 
+			"-loglevel", "error",
+			"-y",
+			"-i", httpFlvURL,
+			"-f", "image2", 
+			"-vf", "fps=1/10,scale=480:-1", 
+			"-update", "1",
+			"/app/thumbnails/"+fileName)
+
+		mu.Lock()
+		activeProcesses[streamID] = cmd
+		mu.Unlock()
+
+		log.Printf("📸 FFmpeg iniciado para %s", fileName)
+		if err := cmd.Run(); err != nil {
+			log.Printf("❌ Error FFmpeg: %v", err)
+		} else {
+			log.Printf("✅ Thumbnail generado correctamente: %s", fileName)
+		}
 	}(cb.Stream, cb.App)
 }
-
 func handleUnpublish(w http.ResponseWriter, r *http.Request) {
 	var cb SRSCallback
 	json.NewDecoder(r.Body).Decode(&cb)
