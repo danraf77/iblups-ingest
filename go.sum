@@ -1,6 +1,0 @@
-github.com/google/go-querystring v1.1.0 h1:AnCroh3fv4ZBgVIf1Iwtovgjaw/GiKJo8M8yD/fhyJ8=
-github.com/google/go-querystring v1.1.0/go.mod h1:Kcdr2DB4koayq7X8pmAG4sNG59So17n4SU4DoOJKy2s=
-github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hjr6fOLd4FAMi53Y=
-github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/supabase-community/supabase-go v0.0.4 h1:+TiEbYSLPFSxJT5l9dRPvWxkycSdqNC3KTYnBdNZgXs=
-github.com/supabase-community/supabase-go v0.0.4/go.mod h1:xom0fkPl+x8M4I8MzsDbTIXBhN/EqFx4BvMuVJM4Cdk=

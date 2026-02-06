@@ -5,13 +5,13 @@ RUN apk add --no-cache ffmpeg
 
 WORKDIR /app
 
-# Copiamos archivos de dependencias
-COPY go.mod go.sum ./
+# Copiamos solo go.mod primero
+COPY go.mod ./
 
-# Descargamos dependencias
+# Descargamos dependencias (esto generará go.sum automáticamente)
 RUN go mod download
 
-# Copiamos el código fuente
+# Copiamos el resto del código
 COPY . .
 
 # Compilamos
