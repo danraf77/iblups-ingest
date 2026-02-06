@@ -45,28 +45,27 @@ func main() {
 func handlePublish(w http.ResponseWriter, r *http.Request) {
 	var cb SRSCallback
 	json.NewDecoder(r.Body).Decode(&cb)
-	w.Write([]byte("0")) // Respuesta inmediata para SRS
+	w.Write([]byte("0"))
 
 	go func(streamID string) {
-		// 1. Obtener UUID del canal
-		var results []struct { ID string `json:"id"` }
-		client.From("channels_channel").Select("id", "1", false).Eq("stream_id", streamID).ExecuteTo(&results)
+		var results []struct{ ID string `json:"id"` }
+		// Corregido: Select antes de Eq
+		_, err := client.From("channels_channel").Select("id", "1", false).Eq("stream_id", streamID).ExecuteTo(&results)
 
-		if len(results) == 0 { return }
+		if err != nil || len(results) == 0 { return }
 		channelID := results[0].ID
 		fileName := getPersistentHash(channelID) + ".jpg"
 
-		// 2. Actualizar Supabase
 		updateData := map[string]interface{}{
-			"is_on_live": true,
+			"is_on_live":  true,
 			"last_status": "online",
-			"cover": fileName,
-			"modified": time.Now().Format(time.RFC3339),
+			"cover":       fileName,
+			"modified":    time.Now().Format(time.RFC3339),
 		}
-		client.From("channels_channel").Eq("id", channelID).Update(updateData, "", "").Execute()
+		
+		// Corregido: Update antes de Eq
+		client.From("channels_channel").Update(updateData, "", "").Eq("id", channelID).Execute()
 
-		// 3. Iniciar FFmpeg (Thumbnail)
-		// Conectamos a 'srs' que es el nombre del servicio en docker-compose
 		cmd := exec.Command("ffmpeg", "-loglevel", "quiet", "-y",
 			"-i", "rtmp://srs:1935/live/"+streamID,
 			"-f", "image2", "-vf", "fps=1/10,scale=480:-1", "-update", "1",
@@ -93,23 +92,19 @@ func handleUnpublish(w http.ResponseWriter, r *http.Request) {
 		}
 		mu.Unlock()
 
-		updateData := map[string]interface{}{"is_on_live": false, "modified": time.Now().Format(time.RFC3339)}
-		client.From("channels_channel").Eq("stream_id", streamID).Update(updateData, "", "").Execute()
+		updateData := map[string]interface{}{
+			"is_on_live": false, 
+			"modified":   time.Now().Format(time.RFC3339),
+		}
+		// Corregido: Update antes de Eq
+		client.From("channels_channel").Update(updateData, "", "").Eq("stream_id", streamID).Execute()
 	}(cb.Stream)
 }
 
 func handleForward(w http.ResponseWriter, r *http.Request) {
-    var cb SRSCallback
-    json.NewDecoder(r.Body).Decode(&cb)
-    
-    // Leemos la URL del .env
-    target := os.Getenv("TARGET_FORWARD_URL")
-    
-    resp := map[string]interface{}{
-        "code": 0, 
-        "data": map[string]interface{}{
-            "urls": []string{fmt.Sprintf("%s/%s", target, cb.Stream)},
-        },
-    }
-    json.NewEncoder(w).Encode(resp)
+	var cb SRSCallback
+	json.NewDecoder(r.Body).Decode(&cb)
+	target := os.Getenv("TARGET_FORWARD_URL")
+	resp := map[string]interface{}{"code": 0, "data": map[string]interface{}{"urls": []string{fmt.Sprintf("%s/%s", target, cb.Stream)}}}
+	json.NewEncoder(w).Encode(resp)
 }
