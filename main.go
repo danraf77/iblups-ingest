@@ -78,6 +78,10 @@ func handlePublish(w http.ResponseWriter, r *http.Request) {
 		
 		client.From("channels_channel").Update(updateData, "", "").Eq("id", channelID).Execute()
 
+		// ✅ AGREGAR DELAY: Esperar 2 segundos para que el stream esté listo
+		time.Sleep(2 * time.Second)
+		log.Printf("⏳ Esperando 2s para que el stream esté disponible...")
+
 		// Usamos el appName que viene de SRS para que el comando FFmpeg sea dinámico
 		rtmpURL := fmt.Sprintf("rtmp://srs:1935/%s/%s", appName, streamID)
 		cmd := exec.Command("ffmpeg", "-loglevel", "quiet", "-y",
