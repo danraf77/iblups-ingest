@@ -148,13 +148,21 @@ func handleForward(w http.ResponseWriter, r *http.Request) {
 	if target == "" {
 		log.Printf("⚠️ TARGET_FORWARD_URL no configurado")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"code": 0, "urls": []string{}})
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"urls": []string{},
+			},
+		})
 		return
 	}
 	
+	// ✅ Formato correcto con "data" wrapper
 	resp := map[string]interface{}{
 		"code": 0,
-		"urls": []string{fmt.Sprintf("%s/%s/%s", target, cb.App, cb.Stream)},
+		"data": map[string]interface{}{
+			"urls": []string{fmt.Sprintf("%s/%s/%s", target, cb.App, cb.Stream)},
+		},
 	}
 	
 	log.Printf("➡️ Forwarding a: %s/%s/%s", target, cb.App, cb.Stream)
