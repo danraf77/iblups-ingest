@@ -81,21 +81,16 @@ func handlePublish(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(5 * time.Second)
 		log.Printf("⏳ Iniciando captura de thumbnail...")
 
-		// ✅ RTMP en modo play (lectura)
-		rtmpURL := fmt.Sprintf("rtmp://srs:1935/%s/%s", appName, streamID)
+		// ✅ IMPORTANTE: Agregar vhost para conectarse al stream correcto
+		rtmpURL := fmt.Sprintf("rtmp://srs:1935/%s/%s?vhost=51.210.109.197", appName, streamID)
 		outputPath := "/app/thumbnails/" + fileName
 		
 		log.Printf("🔗 RTMP URL: %s", rtmpURL)
 		log.Printf("💾 Output: %s", outputPath)
 		
-		// ✅ Capturar solo 1 frame después de 2 segundos de stream
-		cmd := exec.Command("ffmpeg", 
-			"-loglevel", "info",
-			"-y",
-			"-i", rtmpURL,
-			"-frames:v", "1",  // ← Solo 1 frame
-			"-q:v", "2",       // ← Calidad alta
-			outputPath)
+		// ✅ Usar timeout para evitar bloqueos + capturar 1 frame
+		cmd := exec.Command("sh", "-c", 
+			fmt.Sprintf("timeout 10 ffmpeg -y -i '%s' -vframes 1 -q:v 2 '%s'", rtmpURL, outputPath))
 
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -104,9 +99,14 @@ func handlePublish(w http.ResponseWriter, r *http.Request) {
 		activeProcesses[streamID] = cmd
 		mu.Unlock()
 
-		log.Printf("📸 FFmpeg iniciado, capturando frame...")
+		log.Printf("📸 FFmpeg iniciado con timeout de 10s...")
 		if err := cmd.Run(); err != nil {
-			log.Printf("❌ Error FFmpeg: %v", err)
+			// timeout retorna exit code 124, verificar si el archivo se generó
+			if _, statErr := os.Stat(outputPath); statErr == nil {
+				log.Printf("✅ Thumbnail generado (con timeout): %s", fileName)
+			} else {
+				log.Printf("❌ Error FFmpeg: %v", err)
+			}
 		} else {
 			log.Printf("✅ Thumbnail generado correctamente: %s", fileName)
 		}
@@ -117,24 +117,22 @@ func handlePublish(w http.ResponseWriter, r *http.Request) {
 		mu.Unlock()
 	}(cb.Stream, cb.App)
 }
+
 func handleUnpublish(w http.ResponseWriter, r *http.Request) {
 	var cb SRSCallback
 	json.NewDecoder(r.Body).Decode(&cb)
 	log.Printf("🔻 Unpublish detectado: %s", cb.Stream)
 	w.Write([]byte("0"))
 
-	go func(streamID string, appName string) {
-		// Limpiar snapshot temporal de SRS
-		srsSnapshotPath := fmt.Sprintf("/snapshots/%s/%s.jpg", appName, streamID)
-		os.Remove(srsSnapshotPath)
-		
+	go func(streamID string) {
+		// Actualizar estado en base de datos
 		updateData := map[string]interface{}{
 			"is_on_live": false, 
 			"modified":   time.Now().Format(time.RFC3339),
 		}
 		client.From("channels_channel").Update(updateData, "", "").Eq("stream_id", streamID).Execute()
 		log.Printf("✅ Canal actualizado como offline: %s", streamID)
-	}(cb.Stream, cb.App)
+	}(cb.Stream)
 }
 
 func handleForward(w http.ResponseWriter, r *http.Request) {
