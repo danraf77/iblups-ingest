@@ -120,29 +120,29 @@ func handleUnpublish(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleForward(w http.ResponseWriter, r *http.Request) {
-    var cb SRSCallback
-    if err := json.NewDecoder(r.Body).Decode(&cb); err != nil {
-        log.Printf("❌ Error decode forward: %v", err)
-        w.WriteHeader(http.StatusBadRequest)
-        json.NewEncoder(w).Encode(map[string]interface{}{"code": 1})
-        return
-    }
-    
-    target := os.Getenv("TARGET_FORWARD_URL")
-    if target == "" {
-        log.Printf("⚠️ TARGET_FORWARD_URL no configurado")
-        w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]interface{}{"code": 1})
-        return
-    }
-    
-    // Formato correcto para SRS
-    resp := map[string]interface{}{
-        "code": 0,
-        "urls": []string{fmt.Sprintf("%s/%s/%s", target, cb.App, cb.Stream)},
-    }
-    
-    log.Printf("➡️ Forwarding a: %s/%s/%s", target, cb.App, cb.Stream)
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(resp)
+	var cb SRSCallback
+	if err := json.NewDecoder(r.Body).Decode(&cb); err != nil {
+		log.Printf("❌ Error decode forward: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"code": 1})
+		return
+	}
+	
+	target := os.Getenv("TARGET_FORWARD_URL")
+	if target == "" {
+		log.Printf("⚠️ TARGET_FORWARD_URL no configurado")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"code": 0, "urls": []string{}})
+		return
+	}
+	
+	// Formato correcto para SRS
+	resp := map[string]interface{}{
+		"code": 0,
+		"urls": []string{fmt.Sprintf("%s/%s/%s", target, cb.App, cb.Stream)},
+	}
+	
+	log.Printf("➡️ Forwarding a: %s/%s/%s", target, cb.App, cb.Stream)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
