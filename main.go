@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -21,7 +22,6 @@ var (
 	mu              sync.Mutex
 )
 
-// Estructura expandida para no perder datos de SRS
 type SRSCallback struct {
 	Action string `json:"action"`
 	App    string `json:"app"`
@@ -66,37 +66,49 @@ func handlePublish(w http.ResponseWriter, r *http.Request) {
 		}
 
 		channelID := results[0].ID
-		fileName := getPersistentHash(channelID) + ".jpg"
-		log.Printf("✅ Canal encontrado (ID: %s). Generando thumbnail: %s", channelID, fileName)
+		finalFileName := getPersistentHash(channelID) + ".jpg"
+		srsSnapshotPath := fmt.Sprintf("/snapshots/%s/%s.jpg", appName, streamID)
+		finalPath := "/app/thumbnails/" + finalFileName
+		
+		log.Printf("✅ Canal encontrado (ID: %s). Esperando snapshot de SRS...", channelID)
 
+		// Actualizar DB inmediatamente
 		updateData := map[string]interface{}{
 			"is_on_live":  true,
 			"last_status": "online",
-			"cover":       fileName,
+			"cover":       finalFileName,
 			"modified":    time.Now().Format(time.RFC3339),
 		}
-		
 		client.From("channels_channel").Update(updateData, "", "").Eq("id", channelID).Execute()
 
-		// ✅ AGREGAR DELAY: Esperar 2 segundos para que el stream esté listo
-		time.Sleep(2 * time.Second)
-		log.Printf("⏳ Esperando 2s para que el stream esté disponible...")
-
-		// Usamos el appName que viene de SRS para que el comando FFmpeg sea dinámico
-		rtmpURL := fmt.Sprintf("rtmp://srs:1935/%s/%s", appName, streamID)
-		cmd := exec.Command("ffmpeg", "-loglevel", "quiet", "-y",
-			"-i", rtmpURL,
-			"-f", "image2", "-vf", "fps=1/10,scale=480:-1", "-update", "1",
-			"/app/thumbnails/"+fileName)
-
-		mu.Lock()
-		activeProcesses[streamID] = cmd
-		mu.Unlock()
-
-		log.Printf("📸 FFmpeg iniciado para %s", fileName)
-		if err := cmd.Run(); err != nil {
-			log.Printf("❌ Error FFmpeg: %v", err)
+		// Esperar a que SRS genere el snapshot (puede tardar unos segundos)
+		maxRetries := 30 // 30 segundos máximo
+		for i := 0; i < maxRetries; i++ {
+			time.Sleep(1 * time.Second)
+			
+			if _, err := os.Stat(srsSnapshotPath); err == nil {
+				// El snapshot existe, copiarlo
+				log.Printf("📸 Snapshot encontrado, copiando a: %s", finalFileName)
+				
+				// Crear directorio si no existe
+				os.MkdirAll(filepath.Dir(finalPath), 0755)
+				
+				// Copiar el archivo
+				copyCmd := exec.Command("cp", srsSnapshotPath, finalPath)
+				if err := copyCmd.Run(); err != nil {
+					log.Printf("❌ Error copiando snapshot: %v", err)
+				} else {
+					log.Printf("✅ Thumbnail generado exitosamente: %s", finalFileName)
+				}
+				return
+			}
+			
+			if i%5 == 0 && i > 0 {
+				log.Printf("⏳ Esperando snapshot... (%d/%d)", i, maxRetries)
+			}
 		}
+		
+		log.Printf("⚠️ Timeout esperando snapshot para %s", streamID)
 	}(cb.Stream, cb.App)
 }
 
@@ -106,21 +118,18 @@ func handleUnpublish(w http.ResponseWriter, r *http.Request) {
 	log.Printf("🔻 Unpublish detectado: %s", cb.Stream)
 	w.Write([]byte("0"))
 
-	go func(streamID string) {
-		mu.Lock()
-		if cmd, ok := activeProcesses[streamID]; ok {
-			cmd.Process.Kill()
-			delete(activeProcesses, streamID)
-			log.Printf("🛑 Proceso FFmpeg terminado para %s", streamID)
-		}
-		mu.Unlock()
-
+	go func(streamID string, appName string) {
+		// Limpiar snapshot temporal de SRS
+		srsSnapshotPath := fmt.Sprintf("/snapshots/%s/%s.jpg", appName, streamID)
+		os.Remove(srsSnapshotPath)
+		
 		updateData := map[string]interface{}{
 			"is_on_live": false, 
 			"modified":   time.Now().Format(time.RFC3339),
 		}
 		client.From("channels_channel").Update(updateData, "", "").Eq("stream_id", streamID).Execute()
-	}(cb.Stream)
+		log.Printf("✅ Canal actualizado como offline: %s", streamID)
+	}(cb.Stream, cb.App)
 }
 
 func handleForward(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +149,6 @@ func handleForward(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Formato correcto para SRS
 	resp := map[string]interface{}{
 		"code": 0,
 		"urls": []string{fmt.Sprintf("%s/%s/%s", target, cb.App, cb.Stream)},
