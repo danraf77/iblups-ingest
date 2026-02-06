@@ -10,6 +10,8 @@ services:
     volumes:
       - ./srs.conf:/usr/local/srs/conf/srs.conf
     restart: always
+    networks:
+      - srs-network
     ulimits:
       nofile:
         soft: 100000
@@ -18,7 +20,8 @@ services:
   backend-go:
     build: .
     container_name: backend-go
-    # Carga automática de variables desde el archivo .env
+    ports:
+      - "3000:3000" # ← AÑADE ESTA LÍNEA
     env_file:
       - .env
     volumes:
@@ -26,3 +29,9 @@ services:
     restart: always
     depends_on:
       - srs
+    networks:
+      - srs-network
+
+networks:
+  srs-network:
+    driver: bridge
