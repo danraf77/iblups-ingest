@@ -77,32 +77,44 @@ func handlePublish(w http.ResponseWriter, r *http.Request) {
 		
 		client.From("channels_channel").Update(updateData, "", "").Eq("id", channelID).Execute()
 
-		// Esperar 3 segundos para que el stream esté disponible
-		time.Sleep(3 * time.Second)
-		log.Printf("⏳ Stream disponible, iniciando captura vía HTTP-FLV...")
+		// Esperar a que el stream esté completamente disponible
+		time.Sleep(5 * time.Second)
+		log.Printf("⏳ Iniciando captura de thumbnail...")
 
-		// ✅ HTTP-FLV: Solo lectura, sin conflictos con OBS
-		httpFlvURL := fmt.Sprintf("http://srs:8080/%s/%s.flv", appName, streamID)
+		// ✅ RTMP en modo play (lectura)
+		rtmpURL := fmt.Sprintf("rtmp://srs:1935/%s/%s", appName, streamID)
+		outputPath := "/app/thumbnails/" + fileName
 		
+		log.Printf("🔗 RTMP URL: %s", rtmpURL)
+		log.Printf("💾 Output: %s", outputPath)
+		
+		// ✅ Capturar solo 1 frame después de 2 segundos de stream
 		cmd := exec.Command("ffmpeg", 
-			"-loglevel", "error",
+			"-loglevel", "info",
 			"-y",
-			"-i", httpFlvURL,
-			"-f", "image2", 
-			"-vf", "fps=1/10,scale=480:-1", 
-			"-update", "1",
-			"/app/thumbnails/"+fileName)
+			"-i", rtmpURL,
+			"-frames:v", "1",  // ← Solo 1 frame
+			"-q:v", "2",       // ← Calidad alta
+			outputPath)
+
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 
 		mu.Lock()
 		activeProcesses[streamID] = cmd
 		mu.Unlock()
 
-		log.Printf("📸 FFmpeg iniciado para %s", fileName)
+		log.Printf("📸 FFmpeg iniciado, capturando frame...")
 		if err := cmd.Run(); err != nil {
 			log.Printf("❌ Error FFmpeg: %v", err)
 		} else {
 			log.Printf("✅ Thumbnail generado correctamente: %s", fileName)
 		}
+		
+		// Limpiar del mapa después de capturar
+		mu.Lock()
+		delete(activeProcesses, streamID)
+		mu.Unlock()
 	}(cb.Stream, cb.App)
 }
 func handleUnpublish(w http.ResponseWriter, r *http.Request) {
