@@ -21,9 +21,12 @@ var (
 	mu              sync.Mutex
 )
 
+// Estructura expandida para no perder datos de SRS
 type SRSCallback struct {
 	Action string `json:"action"`
+	App    string `json:"app"`
 	Stream string `json:"stream"`
+	Param  string `json:"param"`
 }
 
 func getPersistentHash(id string) string {
@@ -44,17 +47,27 @@ func main() {
 
 func handlePublish(w http.ResponseWriter, r *http.Request) {
 	var cb SRSCallback
-	json.NewDecoder(r.Body).Decode(&cb)
+	if err := json.NewDecoder(r.Body).Decode(&cb); err != nil {
+		log.Printf("❌ Error decode: %v", err)
+		w.Write([]byte("1"))
+		return
+	}
+	
+	log.Printf("📢 Publish detectado: App=%s, Stream=%s", cb.App, cb.Stream)
 	w.Write([]byte("0"))
 
-	go func(streamID string) {
+	go func(streamID string, appName string) {
 		var results []struct{ ID string `json:"id"` }
-		// Corregido: Select antes de Eq
 		_, err := client.From("channels_channel").Select("id", "1", false).Eq("stream_id", streamID).ExecuteTo(&results)
 
-		if err != nil || len(results) == 0 { return }
+		if err != nil || len(results) == 0 {
+			log.Printf("⚠️ Canal no encontrado en Supabase para stream_id: %s", streamID)
+			return
+		}
+
 		channelID := results[0].ID
 		fileName := getPersistentHash(channelID) + ".jpg"
+		log.Printf("✅ Canal encontrado (ID: %s). Generando thumbnail: %s", channelID, fileName)
 
 		updateData := map[string]interface{}{
 			"is_on_live":  true,
@@ -63,11 +76,12 @@ func handlePublish(w http.ResponseWriter, r *http.Request) {
 			"modified":    time.Now().Format(time.RFC3339),
 		}
 		
-		// Corregido: Update antes de Eq
 		client.From("channels_channel").Update(updateData, "", "").Eq("id", channelID).Execute()
 
+		// Usamos el appName que viene de SRS para que el comando FFmpeg sea dinámico
+		rtmpURL := fmt.Sprintf("rtmp://srs:1935/%s/%s", appName, streamID)
 		cmd := exec.Command("ffmpeg", "-loglevel", "quiet", "-y",
-			"-i", "rtmp://srs:1935/live/"+streamID,
+			"-i", rtmpURL,
 			"-f", "image2", "-vf", "fps=1/10,scale=480:-1", "-update", "1",
 			"/app/thumbnails/"+fileName)
 
@@ -75,13 +89,17 @@ func handlePublish(w http.ResponseWriter, r *http.Request) {
 		activeProcesses[streamID] = cmd
 		mu.Unlock()
 
-		cmd.Run()
-	}(cb.Stream)
+		log.Printf("📸 FFmpeg iniciado para %s", fileName)
+		if err := cmd.Run(); err != nil {
+			log.Printf("❌ Error FFmpeg: %v", err)
+		}
+	}(cb.Stream, cb.App)
 }
 
 func handleUnpublish(w http.ResponseWriter, r *http.Request) {
 	var cb SRSCallback
 	json.NewDecoder(r.Body).Decode(&cb)
+	log.Printf("🔻 Unpublish detectado: %s", cb.Stream)
 	w.Write([]byte("0"))
 
 	go func(streamID string) {
@@ -89,6 +107,7 @@ func handleUnpublish(w http.ResponseWriter, r *http.Request) {
 		if cmd, ok := activeProcesses[streamID]; ok {
 			cmd.Process.Kill()
 			delete(activeProcesses, streamID)
+			log.Printf("🛑 Proceso FFmpeg terminado para %s", streamID)
 		}
 		mu.Unlock()
 
@@ -96,7 +115,6 @@ func handleUnpublish(w http.ResponseWriter, r *http.Request) {
 			"is_on_live": false, 
 			"modified":   time.Now().Format(time.RFC3339),
 		}
-		// Corregido: Update antes de Eq
 		client.From("channels_channel").Update(updateData, "", "").Eq("stream_id", streamID).Execute()
 	}(cb.Stream)
 }
@@ -104,7 +122,15 @@ func handleUnpublish(w http.ResponseWriter, r *http.Request) {
 func handleForward(w http.ResponseWriter, r *http.Request) {
 	var cb SRSCallback
 	json.NewDecoder(r.Body).Decode(&cb)
+	
 	target := os.Getenv("TARGET_FORWARD_URL")
-	resp := map[string]interface{}{"code": 0, "data": map[string]interface{}{"urls": []string{fmt.Sprintf("%s/%s", target, cb.Stream)}}}
+	// FORMATO CORRECTO PARA SRS: {"code": 0, "urls": ["rtmp://..."]}
+	resp := map[string]interface{}{
+		"code": 0,
+		"urls": []string{fmt.Sprintf("%s/%s", target, cb.Stream)},
+	}
+	
+	log.Printf("➡️ Forwarding a: %s/%s", target, cb.Stream)
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
