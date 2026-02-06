@@ -17,7 +17,7 @@ import (
 
 var (
 	client          *supabase.Client
-	activeProcesses = make(map[string]*exec.Cmd)
+	activeProcesses = make(map[string]*time.Ticker)  // ← Cambio: Ticker en vez de Cmd
 	mu              sync.Mutex
 )
 
@@ -42,6 +42,26 @@ func main() {
 
 	log.Println("🚀 Backend Go iniciado en puerto 3000")
 	log.Fatal(http.ListenAndServe(":3000", nil))
+}
+
+// ✅ Función para capturar un thumbnail (reutilizable)
+func captureThumbnail(rtmpURL, outputPath, fileName string) {
+	cmd := exec.Command("ffmpeg", 
+		"-y",
+		"-i", rtmpURL,
+		"-vframes", "1",
+		"-q:v", "2",
+		outputPath)
+
+	if err := cmd.Run(); err != nil {
+		if _, statErr := os.Stat(outputPath); statErr == nil {
+			log.Printf("✅ Thumbnail actualizado: %s", fileName)
+		} else {
+			log.Printf("❌ Error FFmpeg: %v", err)
+		}
+	} else {
+		log.Printf("✅ Thumbnail generado: %s", fileName)
+	}
 }
 
 func handlePublish(w http.ResponseWriter, r *http.Request) {
@@ -77,48 +97,30 @@ func handlePublish(w http.ResponseWriter, r *http.Request) {
 		
 		client.From("channels_channel").Update(updateData, "", "").Eq("id", channelID).Execute()
 
-		// Esperar a que el stream esté completamente disponible
-		time.Sleep(5 * time.Second)
-		log.Printf("⏳ Iniciando captura de thumbnail...")
-
-		// ✅ RTMP con vhost para conectarse al stream correcto
 		rtmpURL := fmt.Sprintf("rtmp://srs:1935/%s/%s?vhost=51.210.109.197", appName, streamID)
 		outputPath := "/app/thumbnails/" + fileName
-		
-		log.Printf("🔗 RTMP URL: %s", rtmpURL)
-		log.Printf("💾 Output: %s", outputPath)
-		
-		// ✅ Sin timeout - FFmpeg captura 1 frame y termina automáticamente
-		cmd := exec.Command("ffmpeg", 
-			"-y",
-			"-i", rtmpURL,
-			"-vframes", "1",
-			"-q:v", "2",
-			outputPath)
 
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		// ✅ Captura inicial inmediata
+		time.Sleep(5 * time.Second)
+		log.Printf("📸 Capturando thumbnail inicial...")
+		captureThumbnail(rtmpURL, outputPath, fileName)
 
+		// ✅ Ticker: Captura cada 2 minutos (configurable)
+		ticker := time.NewTicker(2 * time.Minute)  // ← Cambiar aquí: 1, 2, 3, 5 minutos
+		
 		mu.Lock()
-		activeProcesses[streamID] = cmd
+		activeProcesses[streamID] = ticker
 		mu.Unlock()
 
-		log.Printf("📸 FFmpeg iniciado, capturando 1 frame...")
-		if err := cmd.Run(); err != nil {
-			// Verificar si el archivo se generó a pesar del error
-			if _, statErr := os.Stat(outputPath); statErr == nil {
-				log.Printf("✅ Thumbnail generado: %s", fileName)
-			} else {
-				log.Printf("❌ Error FFmpeg: %v", err)
+		log.Printf("⏰ Thumbnail se actualizará cada 2 minutos")
+
+		// ✅ Loop que captura periódicamente
+		go func() {
+			for range ticker.C {
+				log.Printf("🔄 Actualizando thumbnail para %s", streamID)
+				captureThumbnail(rtmpURL, outputPath, fileName)
 			}
-		} else {
-			log.Printf("✅ Thumbnail generado correctamente: %s", fileName)
-		}
-		
-		// Limpiar del mapa después de capturar
-		mu.Lock()
-		delete(activeProcesses, streamID)
-		mu.Unlock()
+		}()
 	}(cb.Stream, cb.App)
 }
 
@@ -129,6 +131,15 @@ func handleUnpublish(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("0"))
 
 	go func(streamID string) {
+		// ✅ Detener el ticker
+		mu.Lock()
+		if ticker, ok := activeProcesses[streamID]; ok {
+			ticker.Stop()
+			delete(activeProcesses, streamID)
+			log.Printf("🛑 Ticker detenido para %s", streamID)
+		}
+		mu.Unlock()
+
 		// Actualizar estado en base de datos
 		updateData := map[string]interface{}{
 			"is_on_live": false, 
@@ -161,7 +172,6 @@ func handleForward(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// ✅ Formato correcto con "data" wrapper
 	resp := map[string]interface{}{
 		"code": 0,
 		"data": map[string]interface{}{
