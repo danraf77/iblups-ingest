@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  srs:
+    image: ossrs/srs:6
+    container_name: srs-server
+    ports:
+      - "1935:1935"
+      - "1985:1985"
+    volumes:
+      - ./srs.conf:/usr/local/srs/conf/srs.conf
+    restart: always
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+
+  backend-go:
+    build: .
+    container_name: backend-go
+    # Carga automática de variables desde el archivo .env
+    env_file:
+      - .env
+    volumes:
+      - ./thumbnails:/app/thumbnails
+    restart: always
+    depends_on:
+      - srs

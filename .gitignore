@@ -1,0 +1,22 @@
+# Credenciales y Configuración Sensible
+.env
+
+# Binarios de Go
+main
+backend-go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Carpeta de Thumbnails (No queremos subir las fotos de los usuarios)
+thumbnails/*.jpg
+
+# Logs de SRS y Docker
+*.log
+objs/
+
+# Archivos de Sistema y Docker
+.DS_Store
+.docker-collect
