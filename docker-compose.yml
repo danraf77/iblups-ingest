@@ -8,7 +8,7 @@ services:
       - "1935:1935"
       - "1985:1985"
     volumes:
-      - ./srs.conf:/usr/local/srs/conf/srs.conf
+      - ./srs.conf:/usr/local/srs/conf/docker.conf # ← Cambia esto
     restart: always
     networks:
       - srs-network
@@ -21,7 +21,7 @@ services:
     build: .
     container_name: backend-go
     ports:
-      - "3000:3000" # ← AÑADE ESTA LÍNEA
+      - "3000:3000"
     env_file:
       - .env
     volumes:
