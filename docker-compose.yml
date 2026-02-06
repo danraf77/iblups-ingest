@@ -7,7 +7,7 @@ services:
     ports:
       - "1935:1935"
       - "1985:1985"
-      - "8080:8080" # ← Puerto HTTP-FLV
+      - "8080:8080"
     volumes:
       - ./srs.conf:/usr/local/srs/conf/docker.conf
     restart: always
@@ -30,6 +30,18 @@ services:
     restart: always
     depends_on:
       - srs
+    networks:
+      - srs-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-thumbnails
+    ports:
+      - "80:80" # ← PUERTO 80
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./thumbnails:/usr/share/nginx/html/thumbnails:ro
+    restart: always
     networks:
       - srs-network
 
