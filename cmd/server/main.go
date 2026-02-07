@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"net/http"
-	"os"
 
 	"srs-backend/internal/config"
 	"srs-backend/internal/handlers"
@@ -14,10 +13,22 @@ func main() {
 	// Inicializar configuración
 	cfg := config.New()
 
+	log.Printf("🆔 Server ID: %s", cfg.ServerID)
+	log.Printf("🌐 Server IP: %s", cfg.ServerIP)
+
 	// Inicializar servicios
 	supabaseService := services.NewSupabaseService(cfg.SupabaseURL, cfg.SupabaseKey)
 	thumbnailService := services.NewThumbnailService()
-	metricsCollector := services.NewMetricsCollector(supabaseService)
+
+	// ✅ Registrar servidor en BD
+	if err := supabaseService.RegisterServer(cfg.ServerID, cfg.ServerIP); err != nil {
+		log.Printf("⚠️ Error registrando servidor: %v", err)
+	} else {
+		log.Printf("✅ Servidor %s registrado en base de datos", cfg.ServerID)
+	}
+
+	// ✅ CORREGIDO: Pasar serverID y serverIP
+	metricsCollector := services.NewMetricsCollector(supabaseService, cfg.ServerID, cfg.ServerIP)
 
 	// Iniciar recolector de métricas en background
 	go metricsCollector.Start()
