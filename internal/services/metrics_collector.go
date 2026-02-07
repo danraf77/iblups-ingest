@@ -11,12 +11,16 @@ import (
 type MetricsCollector struct {
 	supabase  *SupabaseService
 	srsClient *SRSClient
+	serverID  string
+	serverIP  string
 }
 
-func NewMetricsCollector(supabase *SupabaseService) *MetricsCollector {
+func NewMetricsCollector(supabase *SupabaseService, serverID, serverIP string) *MetricsCollector {
 	return &MetricsCollector{
 		supabase:  supabase,
 		srsClient: NewSRSClient(),
+		serverID:  serverID,
+		serverIP:  serverIP,
 	}
 }
 
@@ -24,7 +28,7 @@ func (m *MetricsCollector) Start() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	log.Println("📊 Recolector de métricas iniciado (cada 30s)")
+	log.Printf("📊 Recolector de métricas iniciado para servidor %s (cada 30s)", m.serverID)
 
 	for range ticker.C {
 		go m.collectAndSaveMetrics()
@@ -108,8 +112,10 @@ func (m *MetricsCollector) collectAndSaveMetrics() {
 		}
 	}
 
-	// 4. Guardar métricas del servidor
+	// 4. Guardar métricas del servidor - ✅ CORREGIDO: Capturar 3 valores
 	serverMetric := map[string]interface{}{
+		"server_id":         m.serverID,
+		"server_ip":         m.serverIP,
 		"cpu_percent":       cpuPercent,
 		"memory_mb":         memoryMB,
 		"total_streams":     len(srsStreamsResponse.Streams),
@@ -118,12 +124,12 @@ func (m *MetricsCollector) collectAndSaveMetrics() {
 		"players":           players,
 	}
 
-	_, err = client.From("server_metrics").Insert(serverMetric, false, "", "", "").Execute()
+	_, _, err = client.From("iblups_server_metrics").Insert(serverMetric, false, "", "", "").Execute()
 	if err != nil {
-		log.Printf("❌ Error guardando server_metrics: %v", err)
+		log.Printf("❌ Error guardando iblups_server_metrics: %v", err)
 	}
 
-	// 5. Guardar métricas de streams
+	// 5. Guardar métricas de streams - ✅ CORREGIDO: Capturar 3 valores
 	for _, stream := range srsStreamsResponse.Streams {
 		resolution := ""
 		codec := ""
@@ -133,6 +139,8 @@ func (m *MetricsCollector) collectAndSaveMetrics() {
 		}
 
 		streamMetric := map[string]interface{}{
+			"server_id":     m.serverID,
+			"server_ip":     m.serverIP,
 			"stream_id":     stream.ID,
 			"stream_name":   stream.Name,
 			"app":           stream.App,
@@ -144,23 +152,28 @@ func (m *MetricsCollector) collectAndSaveMetrics() {
 			"resolution":    resolution,
 		}
 
-		_, err = client.From("stream_metrics").Insert(streamMetric, false, "", "", "").Execute()
+		_, _, err = client.From("iblups_stream_metrics").Insert(streamMetric, false, "", "", "").Execute()
 		if err != nil {
-			log.Printf("❌ Error guardando stream_metrics: %v", err)
+			log.Printf("❌ Error guardando iblups_stream_metrics: %v", err)
 		}
 	}
 
-	// 6. Alertas
+	// 6. Alertas - ✅ CORREGIDO: Capturar 3 valores
 	if cpuPercent > 80 {
 		alert := map[string]interface{}{
+			"server_id":  m.serverID,
+			"server_ip":  m.serverIP,
 			"event_type": "high_cpu",
 			"severity":   "warning",
-			"message":    fmt.Sprintf("CPU usage alto: %.1f%%", cpuPercent),
-			"metadata":   map[string]interface{}{"cpu": cpuPercent},
+			"message":    fmt.Sprintf("CPU alto en %s: %.1f%%", m.serverID, cpuPercent),
+			"metadata": map[string]interface{}{
+				"server_id": m.serverID,
+				"cpu":       cpuPercent,
+			},
 		}
-		client.From("system_events").Insert(alert, false, "", "", "").Execute()
+		client.From("iblups_system_events").Insert(alert, false, "", "", "").Execute()
 	}
 
-	log.Printf("✅ Métricas guardadas: CPU=%.1f%%, Mem=%dMB, Streams=%d, Conn=%d",
-		cpuPercent, memoryMB, len(srsStreamsResponse.Streams), totalConnections)
+	log.Printf("✅ [%s] Métricas: CPU=%.1f%%, Mem=%dMB, Streams=%d, Conn=%d",
+		m.serverID, cpuPercent, memoryMB, len(srsStreamsResponse.Streams), totalConnections)
 }
