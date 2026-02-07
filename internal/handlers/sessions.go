@@ -122,7 +122,8 @@ func (h *SessionsHandler) processStop(cb models.SRSCallback) {
 		// Cambio: cerrar sesión por client_id cuando exista (Firma: Cursor)
 		query = query.Eq("client_id", cb.ClientID)
 	} else if ok {
-		query = query.Eq("connected_at", connectedAt)
+		// Cambio: Supabase Eq requiere string para timestamp (Firma: Cursor)
+		query = query.Eq("connected_at", connectedAt.Format(time.RFC3339))
 	}
 
 	if _, _, err := query.Execute(); err != nil {
