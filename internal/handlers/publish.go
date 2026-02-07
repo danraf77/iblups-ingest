@@ -14,12 +14,15 @@ import (
 type PublishHandler struct {
 	supabase  *services.SupabaseService
 	thumbnail *services.ThumbnailService
+	// Cambio: guardar IP del servidor para fallback (Firma: Cursor)
+	serverIP  string
 }
 
-func NewPublishHandler(supabase *services.SupabaseService, thumbnail *services.ThumbnailService) *PublishHandler {
+func NewPublishHandler(supabase *services.SupabaseService, thumbnail *services.ThumbnailService, serverIP string) *PublishHandler {
 	return &PublishHandler{
 		supabase:  supabase,
 		thumbnail: thumbnail,
+		serverIP:  serverIP,
 	}
 }
 
@@ -64,7 +67,8 @@ func (h *PublishHandler) processPublish(cb models.SRSCallback) {
 	// Cambio: usar vhost real del callback para evitar fallos de thumbnail (Firma: Cursor)
 	vhost := cb.Vhost
 	if vhost == "" {
-		vhost = "141.94.207.173"
+		// Cambio: usar IP del server actual como fallback (Firma: Cursor)
+		vhost = h.serverIP
 	}
 	rtmpURL := fmt.Sprintf("rtmp://srs:1935/%s/%s?vhost=%s", cb.App, cb.Stream, vhost)
 	outputPath := "/app/thumbnails/" + fileName

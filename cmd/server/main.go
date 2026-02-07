@@ -34,7 +34,8 @@ func main() {
 	go metricsCollector.Start()
 
 	// Inicializar handlers
-	publishHandler := handlers.NewPublishHandler(supabaseService, thumbnailService)
+	// Cambio: pasar ServerIP a PublishHandler (Firma: Cursor)
+	publishHandler := handlers.NewPublishHandler(supabaseService, thumbnailService, cfg.ServerIP)
 	unpublishHandler := handlers.NewUnpublishHandler(supabaseService, thumbnailService)
 	// Cambio: handler para sesiones on_play/on_stop (Firma: Cursor)
 	sessionsHandler := handlers.NewSessionsHandler(supabaseService, cfg.ServerID, cfg.ServerIP)
