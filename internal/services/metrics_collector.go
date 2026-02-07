@@ -72,32 +72,54 @@ func (m *MetricsCollector) collectAndSaveMetrics() {
   return
 }
 
-	// 2. Obtener recursos
-respSum, err := http.Get("http://srs:1985/api/v1/summaries/")
-if err != nil {
-  log.Printf("❌ Error obteniendo summaries: %v", err)
-  return
-}
-defer respSum.Body.Close()
+	// 2. Obtener recursos (CPU/RAM) con fallback
+	// Cambio: rusages primero, summaries como respaldo (Firma: Cursor)
+	cpuPercent := 0.0
+	memoryMB := int64(0)
 
-var summaries struct {
-  Data struct {
-    Self struct {
-      CPUPercent float64 `json:"cpu_percent"`
-      MemKbyte   int64   `json:"mem_kbyte"`
-      SRSUptime  int64   `json:"srs_uptime"`
-      Version    string  `json:"version"`
-    } `json:"self"`
-  } `json:"data"`
-}
+	respRusage, err := http.Get("http://srs:1985/api/v1/rusages/")
+	if err == nil {
+		defer respRusage.Body.Close()
+		var rusage struct {
+			Data struct {
+				Percent float64 `json:"percent"`
+				MemKB   int64   `json:"mem_kbyte"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(respRusage.Body).Decode(&rusage); err == nil {
+			cpuPercent = rusage.Data.Percent
+			memoryMB = rusage.Data.MemKB / 1024
+		} else {
+			log.Printf("⚠️ Error decode rusages, usando summaries: %v", err)
+		}
+	} else {
+		log.Printf("⚠️ Error obteniendo rusages, usando summaries: %v", err)
+	}
 
-if err := json.NewDecoder(respSum.Body).Decode(&summaries); err != nil {
-  log.Printf("❌ Error decode summaries: %v", err)
-  return
-}
-
-cpuPercent := summaries.Data.Self.CPUPercent
-memoryMB := summaries.Data.Self.MemKbyte / 1024
+	// Fallback a summaries si rusages falla o devuelve 0
+	if cpuPercent == 0 && memoryMB == 0 {
+		// Cambio: fallback a summaries (Firma: Cursor)
+		respSum, err := http.Get("http://srs:1985/api/v1/summaries/")
+		if err == nil {
+			defer respSum.Body.Close()
+			var summaries struct {
+				Data struct {
+					Self struct {
+						CPUPercent float64 `json:"cpu_percent"`
+						MemKbyte   int64   `json:"mem_kbyte"`
+					} `json:"self"`
+				} `json:"data"`
+			}
+			if err := json.NewDecoder(respSum.Body).Decode(&summaries); err == nil {
+				cpuPercent = summaries.Data.Self.CPUPercent
+				memoryMB = summaries.Data.Self.MemKbyte / 1024
+			} else {
+				log.Printf("❌ Error decode summaries: %v", err)
+			}
+		} else {
+			log.Printf("❌ Error obteniendo summaries: %v", err)
+		}
+	}
 // Cambio: calcular minute_bucket para métricas (Firma: Cursor)
 minuteBucket := time.Now().UTC().Truncate(time.Minute)
 
