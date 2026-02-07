@@ -1,20 +1,17 @@
 FROM golang:1.21-alpine
 
-# Instalamos FFmpeg
 RUN apk add --no-cache ffmpeg
 
 WORKDIR /app
 
-# Copiamos todo el código primero
+COPY go.mod go.sum ./
+RUN go mod download
+
 COPY . .
 
-# Generamos go.sum y descargamos dependencias
-RUN go mod tidy
+# ✅ Compilar desde cmd/server
+RUN go build -o main ./cmd/server
 
-# Compilamos
-RUN go build -o main .
-
-# Creamos directorio para thumbnails
 RUN mkdir -p /app/thumbnails
 
 EXPOSE 3000
