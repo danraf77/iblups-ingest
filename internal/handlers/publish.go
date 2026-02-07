@@ -61,7 +61,12 @@ func (h *PublishHandler) processPublish(cb models.SRSCallback) {
 
 	client.From("channels_channel").Update(updateData, "", "").Eq("id", channelID).Execute()
 
-	rtmpURL := fmt.Sprintf("rtmp://srs:1935/%s/%s?vhost=51.210.109.197", cb.App, cb.Stream)
+	// Cambio: usar vhost real del callback para evitar fallos de thumbnail (Firma: Cursor)
+	vhost := cb.Vhost
+	if vhost == "" {
+		vhost = "141.94.207.173"
+	}
+	rtmpURL := fmt.Sprintf("rtmp://srs:1935/%s/%s?vhost=%s", cb.App, cb.Stream, vhost)
 	outputPath := "/app/thumbnails/" + fileName
 
 	h.thumbnail.StartCapture(cb.Stream, cb.App, fileName, rtmpURL, outputPath)
