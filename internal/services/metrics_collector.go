@@ -163,8 +163,10 @@ minuteBucket := time.Now().UTC().Truncate(time.Minute)
 	"minute_bucket": minuteBucket,
 	}
 
-	// Cambio: prefijo de tabla actualizado a server_ingest_ (Firma: Cursor)
-	_, _, err = client.From("server_ingest_server_metrics").Insert(serverMetric, false, "", "", "").Execute()
+	// Cambio: usar upsert para evitar duplicados por minuto (Firma: Cursor)
+	_, _, err = client.From("server_ingest_server_metrics").
+		Upsert(serverMetric, "server_id,minute_bucket", "", "").
+		Execute()
 	if err != nil {
 		log.Printf("❌ Error guardando server_ingest_server_metrics: %v", err)
 	}
