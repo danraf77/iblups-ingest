@@ -58,8 +58,14 @@ func (s *ThumbnailService) captureThumbnail(rtmpURL, outputPath, fileName string
 	cmd := exec.Command("ffmpeg",
 		"-y",
 		"-i", rtmpURL,
+		// Cambio: tamaño 245x142 con menor costo CPU (Firma: Cursor)
+		"-vf", "scale=245:142:flags=bilinear",
 		"-vframes", "1",
-		"-q:v", "2",
+		// Cambio: forzar salida JPG (Firma: Cursor)
+		"-f", "image2",
+		"-vcodec", "mjpeg",
+		// Cambio: calidad JPG balanceada peso/calidad (Firma: Cursor)
+		"-q:v", "4",
 		outputPath)
 
 	if err := cmd.Run(); err != nil {
