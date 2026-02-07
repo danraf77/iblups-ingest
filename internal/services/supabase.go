@@ -4,6 +4,8 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"log"
+	// Cambio: se agrega time para last_seen (Firma: Cursor)
+	"time"
 
 	"github.com/supabase-community/supabase-go"
 )
@@ -36,12 +38,32 @@ func (s *SupabaseService) RegisterServer(serverID, serverIP string) error {
 	}
 
 	// Upsert: inserta o actualiza si ya existe
-	_, _, err := s.client.From("iblups_srs_servers").
+	// Cambio: prefijo de tabla actualizado a server_ingest_ (Firma: Cursor)
+	_, _, err := s.client.From("server_ingest_srs_servers").
 		Upsert(serverData, "server_id", "", "").
 		Execute()
 
 	if err != nil {
 		log.Printf("❌ Error registrando servidor: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+// Cambio: actualizar last_seen de servidor registrado (Firma: Cursor)
+func (s *SupabaseService) UpdateServerHeartbeat(serverID, serverIP string) error {
+	updateData := map[string]interface{}{
+		"server_ip": serverIP,
+		"last_seen": time.Now().UTC(),
+	}
+
+	_, _, err := s.client.From("server_ingest_srs_servers").
+		Update(updateData, "", "").
+		Eq("server_id", serverID).
+		Execute()
+	if err != nil {
+		log.Printf("❌ Error actualizando last_seen: %v", err)
 		return err
 	}
 

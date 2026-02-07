@@ -30,9 +30,9 @@ func (m *MetricsCollector) Start() {
 
 	log.Printf("📊 Recolector de métricas iniciado para servidor %s (cada 30s)", m.serverID)
 
-	for range ticker.C {
-		go m.collectAndSaveMetrics()
-	}
+for range ticker.C {
+  m.collectAndSaveMetrics()
+}
 }
 
 func (m *MetricsCollector) collectAndSaveMetrics() {
@@ -67,25 +67,40 @@ func (m *MetricsCollector) collectAndSaveMetrics() {
 		} `json:"streams"`
 	}
 
-	json.NewDecoder(resp.Body).Decode(&srsStreamsResponse)
+	if err := json.NewDecoder(resp.Body).Decode(&srsStreamsResponse); err != nil {
+  log.Printf("❌ Error decode streams: %v", err)
+  return
+}
 
 	// 2. Obtener recursos
-	respRusage, _ := http.Get("http://srs:1985/api/v1/rusages/")
-	var cpuPercent float64 = 0
-	var memoryMB int64 = 0
+respSum, err := http.Get("http://srs:1985/api/v1/summaries/")
+if err != nil {
+  log.Printf("❌ Error obteniendo summaries: %v", err)
+  return
+}
+defer respSum.Body.Close()
 
-	if respRusage != nil {
-		defer respRusage.Body.Close()
-		var rusageResponse struct {
-			Data struct {
-				Percent float64 `json:"percent"`
-				MemKB   int64   `json:"mem_kbyte"`
-			} `json:"data"`
-		}
-		json.NewDecoder(respRusage.Body).Decode(&rusageResponse)
-		cpuPercent = rusageResponse.Data.Percent
-		memoryMB = rusageResponse.Data.MemKB / 1024
-	}
+var summaries struct {
+  Data struct {
+    Self struct {
+      CPUPercent float64 `json:"cpu_percent"`
+      MemKbyte   int64   `json:"mem_kbyte"`
+      SRSUptime  int64   `json:"srs_uptime"`
+      Version    string  `json:"version"`
+    } `json:"self"`
+  } `json:"data"`
+}
+
+if err := json.NewDecoder(respSum.Body).Decode(&summaries); err != nil {
+  log.Printf("❌ Error decode summaries: %v", err)
+  return
+}
+
+cpuPercent := summaries.Data.Self.CPUPercent
+memoryMB := summaries.Data.Self.MemKbyte / 1024
+// Cambio: calcular minute_bucket para métricas (Firma: Cursor)
+minuteBucket := time.Now().UTC().Truncate(time.Minute)
+
 
 	// 3. Contar conexiones
 	respClients, _ := http.Get("http://srs:1985/api/v1/clients/")
@@ -122,11 +137,18 @@ func (m *MetricsCollector) collectAndSaveMetrics() {
 		"total_connections": totalConnections,
 		"publishers":        publishers,
 		"players":           players,
+	// Cambio: guardar minute_bucket explícitamente (Firma: Cursor)
+	"minute_bucket": minuteBucket,
 	}
 
-	_, _, err = client.From("iblups_server_metrics").Insert(serverMetric, false, "", "", "").Execute()
+	// Cambio: prefijo de tabla actualizado a server_ingest_ (Firma: Cursor)
+	_, _, err = client.From("server_ingest_server_metrics").Insert(serverMetric, false, "", "", "").Execute()
 	if err != nil {
-		log.Printf("❌ Error guardando iblups_server_metrics: %v", err)
+		log.Printf("❌ Error guardando server_ingest_server_metrics: %v", err)
+	}
+	// Cambio: actualizar last_seen del servidor (Firma: Cursor)
+	if err := m.supabase.UpdateServerHeartbeat(m.serverID, m.serverIP); err != nil {
+		log.Printf("⚠️ Error actualizando last_seen: %v", err)
 	}
 
 	// 5. Guardar métricas de streams - ✅ CORREGIDO: Capturar 3 valores
@@ -152,9 +174,10 @@ func (m *MetricsCollector) collectAndSaveMetrics() {
 			"resolution":    resolution,
 		}
 
-		_, _, err = client.From("iblups_stream_metrics").Insert(streamMetric, false, "", "", "").Execute()
+		// Cambio: prefijo de tabla actualizado a server_ingest_ (Firma: Cursor)
+		_, _, err = client.From("server_ingest_stream_metrics").Insert(streamMetric, false, "", "", "").Execute()
 		if err != nil {
-			log.Printf("❌ Error guardando iblups_stream_metrics: %v", err)
+			log.Printf("❌ Error guardando server_ingest_stream_metrics: %v", err)
 		}
 	}
 
@@ -171,7 +194,8 @@ func (m *MetricsCollector) collectAndSaveMetrics() {
 				"cpu":       cpuPercent,
 			},
 		}
-		client.From("iblups_system_events").Insert(alert, false, "", "", "").Execute()
+		// Cambio: prefijo de tabla actualizado a server_ingest_ (Firma: Cursor)
+		client.From("server_ingest_system_events").Insert(alert, false, "", "", "").Execute()
 	}
 
 	log.Printf("✅ [%s] Métricas: CPU=%.1f%%, Mem=%dMB, Streams=%d, Conn=%d",

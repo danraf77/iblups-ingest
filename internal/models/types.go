@@ -1,10 +1,19 @@
 package models
 
 type SRSCallback struct {
-	Action string `json:"action"`
-	App    string `json:"app"`
-	Stream string `json:"stream"`
-	Param  string `json:"param"`
+	Action    string `json:"action"`
+	App       string `json:"app"`
+	Stream    string `json:"stream"`
+	Param     string `json:"param"`
+	// Cambio: ampliar campos de callback para on_play/on_stop (Firma: Cursor)
+	ClientID  string `json:"client_id"`
+	IP        string `json:"ip"`
+	Vhost     string `json:"vhost"`
+	StreamURL string `json:"stream_url"`
+	StreamID  string `json:"stream_id"`
+	PageURL   string `json:"pageUrl"`
+	Opaque    string `json:"opaque"`
+	RequestID string `json:"request_id"`
 }
 
 type ServerStats struct {

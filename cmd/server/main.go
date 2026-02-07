@@ -36,6 +36,8 @@ func main() {
 	// Inicializar handlers
 	publishHandler := handlers.NewPublishHandler(supabaseService, thumbnailService)
 	unpublishHandler := handlers.NewUnpublishHandler(supabaseService, thumbnailService)
+	// Cambio: handler para sesiones on_play/on_stop (Firma: Cursor)
+	sessionsHandler := handlers.NewSessionsHandler(supabaseService, cfg.ServerID, cfg.ServerIP)
 	forwardHandler := handlers.NewForwardHandler(cfg.TargetForwardURL)
 	statsHandler := handlers.NewStatsHandler()
 	clientsHandler := handlers.NewClientsHandler()
@@ -45,6 +47,8 @@ func main() {
 	// Registrar rutas
 	http.HandleFunc("/api/v1/publish", publishHandler.Handle)
 	http.HandleFunc("/api/v1/unpublish", unpublishHandler.Handle)
+	// Cambio: ruta para callbacks de sesiones (Firma: Cursor)
+	http.HandleFunc("/api/v1/sessions", sessionsHandler.Handle)
 	http.HandleFunc("/api/v1/forward", forwardHandler.Handle)
 	http.HandleFunc("/api/v1/stats", statsHandler.Handle)
 	http.HandleFunc("/api/v1/clients", clientsHandler.Handle)

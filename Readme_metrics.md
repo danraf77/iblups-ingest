@@ -53,10 +53,11 @@
 ---
 
 ## 🗄️ Base de Datos
+<!-- Cambio: prefijo actualizado a server_ingest_. Firma: Cursor -->
 
 ### Tablas Principales
 
-#### 1. `iblups_srs_servers` - Registro de Servidores
+#### 1. `server_ingest_srs_servers` - Registro de Servidores
 
 **Propósito:** Catálogo de todos los servidores SRS en la infraestructura.
 
@@ -82,13 +83,13 @@ SELECT
     is_active,
     last_seen,
     EXTRACT(EPOCH FROM (NOW() - last_seen)) as seconds_offline
-FROM iblups_srs_servers
+FROM server_ingest_srs_servers
 ORDER BY is_active DESC, last_seen DESC;
 ```
 
 ---
 
-#### 2. `iblups_server_metrics` - Métricas del Servidor
+#### 2. `server_ingest_server_metrics` - Métricas del Servidor
 
 **Propósito:** Historial de CPU, RAM y conexiones por servidor.
 
@@ -115,7 +116,7 @@ SELECT
     ROUND(AVG(cpu_percent)::numeric, 2) as avg_cpu,
     MAX(cpu_percent) as max_cpu,
     ROUND(AVG(memory_mb)::numeric, 0) as avg_memory
-FROM iblups_server_metrics
+FROM server_ingest_server_metrics
 WHERE timestamp >= NOW() - INTERVAL '1 hour'
 GROUP BY server_id;
 ```
@@ -129,7 +130,7 @@ SELECT
     AVG(cpu_percent) as cpu,
     AVG(memory_mb) as memory,
     AVG(total_connections) as connections
-FROM iblups_server_metrics
+FROM server_ingest_server_metrics
 WHERE timestamp >= NOW() - INTERVAL '6 hours'
 GROUP BY DATE_TRUNC('minute', timestamp), server_id
 ORDER BY time ASC;
@@ -137,7 +138,7 @@ ORDER BY time ASC;
 
 ---
 
-#### 3. `iblups_stream_metrics` - Métricas de Streams
+#### 3. `server_ingest_stream_metrics` - Métricas de Streams
 
 **Propósito:** Métricas individuales de cada stream activo.
 
@@ -168,7 +169,7 @@ SELECT
     MAX(clients) as max_viewers,
     ROUND(AVG(recv_kbps)::numeric, 0) as avg_bitrate_in,
     COUNT(*) as total_metrics
-FROM iblups_stream_metrics
+FROM server_ingest_stream_metrics
 WHERE timestamp >= NOW() - INTERVAL '1 hour'
     AND is_publishing = true
 GROUP BY server_id, stream_name
@@ -183,7 +184,7 @@ SELECT
     resolution,
     COUNT(DISTINCT stream_name) as total_streams,
     SUM(clients) as total_viewers
-FROM iblups_stream_metrics
+FROM server_ingest_stream_metrics
 WHERE timestamp >= NOW() - INTERVAL '5 minutes'
     AND is_publishing = true
 GROUP BY resolution
@@ -192,7 +193,7 @@ ORDER BY total_viewers DESC;
 
 ---
 
-#### 4. `iblups_client_connections` - Histórico de Conexiones
+#### 4. `server_ingest_client_connections` - Histórico de Conexiones
 
 **Propósito:** Registro detallado de cada conexión de cliente (publishers y players).
 
@@ -223,7 +224,7 @@ SELECT
     COUNT(*) as total_sessions,
     ROUND(AVG(duration_seconds)::numeric / 60, 2) as avg_duration_minutes,
     ROUND(AVG(total_recv_mb)::numeric, 2) as avg_mb_consumed
-FROM iblups_client_connections
+FROM server_ingest_client_connections
 WHERE timestamp >= NOW() - INTERVAL '24 hours'
 GROUP BY server_id, client_type
 ORDER BY total_sessions DESC;
@@ -231,7 +232,7 @@ ORDER BY total_sessions DESC;
 
 ---
 
-#### 5. `iblups_system_events` - Eventos y Alertas
+#### 5. `server_ingest_system_events` - Eventos y Alertas
 
 **Propósito:** Log de eventos importantes y alertas del sistema.
 
@@ -265,7 +266,7 @@ SELECT
     event_type,
     severity,
     message
-FROM iblups_system_events
+FROM server_ingest_system_events
 WHERE severity IN ('error', 'critical')
     AND timestamp >= NOW() - INTERVAL '24 hours'
 ORDER BY timestamp DESC
@@ -276,12 +277,12 @@ LIMIT 50;
 
 ### Vistas SQL Preconstruidas
 
-#### 1. `iblups_servers_status` - Estado Actual de Servidores
+#### 1. `server_ingest_servers_status` - Estado Actual de Servidores
 
 Vista consolidada con información en tiempo real de cada servidor.
 
 ```sql
-SELECT * FROM iblups_servers_status;
+SELECT * FROM server_ingest_servers_status;
 ```
 
 **Columnas:**
@@ -303,19 +304,19 @@ SELECT * FROM iblups_servers_status;
 ```typescript
 // Tabla de estado de servidores
 const { data: servers } = await supabase
-  .from("iblups_servers_status")
+  .from("server_ingest_servers_status")
   .select("*")
   .order("is_active", { ascending: false });
 ```
 
 ---
 
-#### 2. `iblups_stats_by_server_24h` - Estadísticas por Hora
+#### 2. `server_ingest_stats_by_server_24h` - Estadísticas por Hora
 
 Métricas agregadas por hora de cada servidor (últimas 24h).
 
 ```sql
-SELECT * FROM iblups_stats_by_server_24h
+SELECT * FROM server_ingest_stats_by_server_24h
 WHERE server_id = 'srs-paris-01'
 ORDER BY hour DESC;
 ```
@@ -333,19 +334,19 @@ ORDER BY hour DESC;
 ```typescript
 // Gráfico de CPU últimas 24h
 const { data: cpuHistory } = await supabase
-  .from("iblups_stats_by_server_24h")
+  .from("server_ingest_stats_by_server_24h")
   .select("hour, server_id, avg_cpu, max_cpu")
   .gte("hour", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
 ```
 
 ---
 
-#### 3. `iblups_top_streams_by_server` - Top Streams por Servidor
+#### 3. `server_ingest_top_streams_by_server` - Top Streams por Servidor
 
 Los streams más populares por servidor (última hora).
 
 ```sql
-SELECT * FROM iblups_top_streams_by_server
+SELECT * FROM server_ingest_top_streams_by_server
 WHERE server_id = 'srs-paris-01'
 LIMIT 10;
 ```
@@ -360,12 +361,12 @@ LIMIT 10;
 
 ---
 
-#### 4. `iblups_load_distribution` - Distribución de Carga
+#### 4. `server_ingest_load_distribution` - Distribución de Carga
 
 Carga actual distribuida entre servidores (últimos 5 minutos).
 
 ```sql
-SELECT * FROM iblups_load_distribution
+SELECT * FROM server_ingest_load_distribution
 ORDER BY total_clients DESC;
 ```
 
@@ -381,7 +382,7 @@ ORDER BY total_clients DESC;
 ```typescript
 // Gráfico circular de distribución de carga
 const { data: distribution } = await supabase
-  .from("iblups_load_distribution")
+  .from("server_ingest_load_distribution")
   .select("*");
 
 // Calcular porcentaje de carga por servidor
@@ -548,14 +549,14 @@ console.log(`Players: ${players.length}`);
 ```sql
 -- Total de servidores activos
 SELECT COUNT(*) as active_servers
-FROM iblups_srs_servers
+FROM server_ingest_srs_servers
 WHERE is_active = true;
 
 -- Total de streams activos (todos los servidores)
 SELECT SUM(total_streams) as total_streams
 FROM (
     SELECT DISTINCT ON (server_id) total_streams
-    FROM iblups_server_metrics
+    FROM server_ingest_server_metrics
     ORDER BY server_id, timestamp DESC
 ) as latest;
 
@@ -563,7 +564,7 @@ FROM (
 SELECT SUM(players) as total_viewers
 FROM (
     SELECT DISTINCT ON (server_id) players
-    FROM iblups_server_metrics
+    FROM server_ingest_server_metrics
     ORDER BY server_id, timestamp DESC
 ) as latest;
 
@@ -571,7 +572,7 @@ FROM (
 SELECT ROUND(AVG(cpu_percent)::numeric, 2) as avg_cpu
 FROM (
     SELECT DISTINCT ON (server_id) cpu_percent
-    FROM iblups_server_metrics
+    FROM server_ingest_server_metrics
     WHERE timestamp >= NOW() - INTERVAL '5 minutes'
     ORDER BY server_id, timestamp DESC
 ) as latest;
@@ -586,7 +587,7 @@ SELECT
     DATE_TRUNC('minute', timestamp) as time,
     server_id,
     ROUND(AVG(cpu_percent)::numeric, 2) as cpu
-FROM iblups_server_metrics
+FROM server_ingest_server_metrics
 WHERE timestamp >= NOW() - INTERVAL '6 hours'
 GROUP BY DATE_TRUNC('minute', timestamp), server_id
 ORDER BY time ASC, server_id;
@@ -636,7 +637,7 @@ SELECT
     EXTRACT(EPOCH FROM (NOW() - sm.timestamp)) as seconds_ago
 FROM (
     SELECT DISTINCT ON (server_id, stream_name) *
-    FROM iblups_stream_metrics
+    FROM server_ingest_stream_metrics
     WHERE is_publishing = true
     ORDER BY server_id, stream_name, timestamp DESC
 ) sm
@@ -656,8 +657,8 @@ SELECT
     e.severity,
     e.message,
     e.metadata
-FROM iblups_system_events e
-LEFT JOIN iblups_srs_servers s ON e.server_id = s.server_id
+FROM server_ingest_system_events e
+LEFT JOIN server_ingest_srs_servers s ON e.server_id = s.server_id
 WHERE e.timestamp >= NOW() - INTERVAL '24 hours'
     AND e.severity IN ('warning', 'error', 'critical')
 ORDER BY e.timestamp DESC
@@ -679,9 +680,9 @@ SELECT
     COALESCE(m.current_streams, 0) as streams,
     COALESCE(m.current_connections, 0) as connections,
     COALESCE(l.total_clients, 0) as viewers
-FROM iblups_srs_servers s
-LEFT JOIN iblups_servers_status m ON s.server_id = m.server_id
-LEFT JOIN iblups_load_distribution l ON s.server_id = l.server_id
+FROM server_ingest_srs_servers s
+LEFT JOIN server_ingest_servers_status m ON s.server_id = m.server_id
+LEFT JOIN server_ingest_load_distribution l ON s.server_id = l.server_id
 ORDER BY s.is_active DESC, viewers DESC;
 ```
 
@@ -697,7 +698,7 @@ SELECT
     ROUND(AVG(memory_mb)::numeric, 0) as avg_memory,
     ROUND(AVG(total_streams)::numeric, 0) as avg_streams,
     MAX(total_connections) as max_connections
-FROM iblups_server_metrics
+FROM server_ingest_server_metrics
 WHERE timestamp >= NOW() - INTERVAL '30 days'
 GROUP BY DATE(timestamp), server_id
 ORDER BY date DESC, server_id;
@@ -752,7 +753,7 @@ export default function ServersTable() {
 
   const fetchServers = async () => {
     const { data, error } = await supabase
-      .from('iblups_servers_status')
+      .from('server_ingest_servers_status')
       .select('*')
       .order('is_active', { ascending: false });
 
@@ -831,7 +832,7 @@ export default function CPUChart() {
       const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
 
       const { data, error } = await supabase
-        .from('iblups_server_metrics')
+        .from('server_ingest_server_metrics')
         .select('timestamp, server_id, cpu_percent')
         .gte('timestamp', sixHoursAgo.toISOString())
         .order('timestamp', { ascending: true });
@@ -912,7 +913,7 @@ export default function KPIDashboard() {
     const fetchKPIs = async () => {
       // Query para obtener últimas métricas de cada servidor
       const { data: metrics } = await supabase
-        .from('iblups_server_metrics')
+        .from('server_ingest_server_metrics')
         .select('*')
         .gte('timestamp', new Date(Date.now() - 60000).toISOString());
 
@@ -1007,7 +1008,7 @@ export function useRealtimeMetrics() {
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'iblups_server_metrics'
+          table: 'server_ingest_server_metrics'
         },
         (payload) => {
           console.log('Nueva métrica:', payload.new);
@@ -1052,7 +1053,7 @@ SELECT
     EXTRACT(HOUR FROM timestamp) as hour,
     EXTRACT(DOW FROM timestamp) as day_of_week,
     ROUND(AVG(total_connections)::numeric, 0) as avg_connections
-FROM iblups_server_metrics
+FROM server_ingest_server_metrics
 WHERE timestamp >= NOW() - INTERVAL '30 days'
 GROUP BY EXTRACT(HOUR FROM timestamp), EXTRACT(DOW FROM timestamp)
 ORDER BY day_of_week, hour;
@@ -1068,7 +1069,7 @@ WITH stats AS (
         server_id,
         AVG(cpu_percent) as avg_cpu,
         STDDEV(cpu_percent) as stddev_cpu
-    FROM iblups_server_metrics
+    FROM server_ingest_server_metrics
     WHERE timestamp >= NOW() - INTERVAL '7 days'
     GROUP BY server_id
 )
@@ -1078,7 +1079,7 @@ SELECT
     m.cpu_percent,
     s.avg_cpu,
     (m.cpu_percent - s.avg_cpu) / NULLIF(s.stddev_cpu, 0) as z_score
-FROM iblups_server_metrics m
+FROM server_ingest_server_metrics m
 JOIN stats s ON m.server_id = s.server_id
 WHERE m.timestamp >= NOW() - INTERVAL '1 hour'
     AND ABS((m.cpu_percent - s.avg_cpu) / NULLIF(s.stddev_cpu, 0)) > 2
@@ -1095,7 +1096,7 @@ WITH daily_stats AS (
     SELECT
         DATE(timestamp) as date,
         MAX(players) as max_viewers
-    FROM iblups_server_metrics
+    FROM server_ingest_server_metrics
     WHERE timestamp >= NOW() - INTERVAL '30 days'
     GROUP BY DATE(timestamp)
 )
@@ -1118,7 +1119,7 @@ SELECT
     SUM(send_kbps) * 30 / 1024 / 8 as estimated_gb_sent_per_30s,
     -- Si el costo es $0.05/GB
     (SUM(send_kbps) * 30 / 1024 / 8) * 0.05 as estimated_cost_usd
-FROM iblups_stream_metrics
+FROM server_ingest_stream_metrics
 WHERE timestamp >= NOW() - INTERVAL '1 day'
 GROUP BY server_id, DATE(timestamp)
 ORDER BY estimated_cost_usd DESC;
@@ -1132,13 +1133,13 @@ ORDER BY estimated_cost_usd DESC;
 
 ```sql
 -- Ejecutar manualmente
-SELECT cleanup_old_iblups_metrics();
+SELECT cleanup_old_server_ingest_metrics();
 
 -- O crear un cron job en Supabase (pg_cron extension)
 SELECT cron.schedule(
     'cleanup-old-metrics',
     '0 2 * * *',  -- Cada día a las 2 AM
-    $$SELECT cleanup_old_iblups_metrics()$$
+    $$SELECT cleanup_old_server_ingest_metrics()$$
 );
 ```
 
