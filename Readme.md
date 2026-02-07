@@ -58,6 +58,8 @@ Bash
 mkdir \-p /opt/srs-streaming/thumbnails && cd /opt/srs-streaming  
 chmod 777 thumbnails
 
+docker run --rm -v $(pwd):/app -w /app golang:1.21-alpine sh -c "go mod download && go mod tidy"
+
 \# Levantar contenedores  
 docker-compose up \-d \--build
 
