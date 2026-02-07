@@ -96,28 +96,37 @@ func (m *MetricsCollector) collectAndSaveMetrics() {
 		log.Printf("⚠️ Error obteniendo rusages, usando summaries: %v", err)
 	}
 
+	// Cambio: obtener summaries y otras métricas del sistema (Firma: Cursor)
+	summariesPayload, summariesErr := fetchSRSJSON("http://srs:1985/api/v1/summaries/")
+	systemProcPayload, systemProcErr := fetchSRSJSON("http://srs:1985/api/v1/system_proc_stats/")
+	selfProcPayload, selfProcErr := fetchSRSJSON("http://srs:1985/api/v1/self_proc_stats/")
+	meminfosPayload, meminfosErr := fetchSRSJSON("http://srs:1985/api/v1/meminfos/")
+
+	if summariesErr != nil {
+		log.Printf("⚠️ Error obteniendo summaries: %v", summariesErr)
+	}
+	if systemProcErr != nil {
+		log.Printf("⚠️ Error obteniendo system_proc_stats: %v", systemProcErr)
+	}
+	if selfProcErr != nil {
+		log.Printf("⚠️ Error obteniendo self_proc_stats: %v", selfProcErr)
+	}
+	if meminfosErr != nil {
+		log.Printf("⚠️ Error obteniendo meminfos: %v", meminfosErr)
+	}
+
 	// Fallback a summaries si rusages falla o devuelve 0
-	if cpuPercent == 0 && memoryMB == 0 {
+	if cpuPercent == 0 && memoryMB == 0 && summariesPayload != nil {
 		// Cambio: fallback a summaries (Firma: Cursor)
-		respSum, err := http.Get("http://srs:1985/api/v1/summaries/")
-		if err == nil {
-			defer respSum.Body.Close()
-			var summaries struct {
-				Data struct {
-					Self struct {
-						CPUPercent float64 `json:"cpu_percent"`
-						MemKbyte   int64   `json:"mem_kbyte"`
-					} `json:"self"`
-				} `json:"data"`
+		if data, ok := summariesPayload["data"].(map[string]interface{}); ok {
+			if self, ok := data["self"].(map[string]interface{}); ok {
+				if v, ok := self["cpu_percent"].(float64); ok {
+					cpuPercent = v
+				}
+				if v, ok := self["mem_kbyte"].(float64); ok {
+					memoryMB = int64(v / 1024)
+				}
 			}
-			if err := json.NewDecoder(respSum.Body).Decode(&summaries); err == nil {
-				cpuPercent = summaries.Data.Self.CPUPercent
-				memoryMB = summaries.Data.Self.MemKbyte / 1024
-			} else {
-				log.Printf("❌ Error decode summaries: %v", err)
-			}
-		} else {
-			log.Printf("❌ Error obteniendo summaries: %v", err)
 		}
 	}
 // Cambio: calcular minute_bucket para métricas (Firma: Cursor)
@@ -222,6 +231,39 @@ minuteBucket := time.Now().UTC().Truncate(time.Minute)
 		client.From("server_ingest_system_events").Insert(alert, false, "", "", "").Execute()
 	}
 
+	// Cambio: guardar métricas de OS/IO/Others en tabla dedicada (Firma: Cursor)
+	if summariesPayload != nil || systemProcPayload != nil || selfProcPayload != nil || meminfosPayload != nil {
+		systemMetrics := map[string]interface{}{
+			"server_id":         m.serverID,
+			"server_ip":         m.serverIP,
+			"summaries":         summariesPayload,
+			"system_proc_stats": systemProcPayload,
+			"self_proc_stats":   selfProcPayload,
+			"meminfos":          meminfosPayload,
+		}
+
+		_, _, err = client.From("server_ingest_system_metrics").Insert(systemMetrics, false, "", "", "").Execute()
+		if err != nil {
+			log.Printf("❌ Error guardando server_ingest_system_metrics: %v", err)
+		}
+	}
+
 	log.Printf("✅ [%s] Métricas: CPU=%.1f%%, Mem=%dMB, Streams=%d, Conn=%d",
 		m.serverID, cpuPercent, memoryMB, len(srsStreamsResponse.Streams), totalConnections)
+}
+
+// Cambio: helper para leer JSON desde SRS (Firma: Cursor)
+func fetchSRSJSON(url string) (map[string]interface{}, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var payload map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+
+	return payload, nil
 }
