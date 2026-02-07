@@ -97,10 +97,10 @@ func (m *MetricsCollector) collectAndSaveMetrics() {
 	}
 
 	// Cambio: obtener summaries y otras métricas del sistema (Firma: Cursor)
-	summariesPayload, summariesErr := fetchSRSJSON("http://srs:1985/api/v1/summaries/")
-	systemProcPayload, systemProcErr := fetchSRSJSON("http://srs:1985/api/v1/system_proc_stats/")
-	selfProcPayload, selfProcErr := fetchSRSJSON("http://srs:1985/api/v1/self_proc_stats/")
-	meminfosPayload, meminfosErr := fetchSRSJSON("http://srs:1985/api/v1/meminfos/")
+	summariesPayload, summariesErr := fetchSRSJSONExpect("http://srs:1985/api/v1/summaries", true)
+	systemProcPayload, systemProcErr := fetchSRSJSONExpect("http://srs:1985/api/v1/system_proc_stats", true)
+	selfProcPayload, selfProcErr := fetchSRSJSONExpect("http://srs:1985/api/v1/self_proc_stats", true)
+	meminfosPayload, meminfosErr := fetchSRSJSONExpect("http://srs:1985/api/v1/meminfos", true)
 
 	if summariesErr != nil {
 		log.Printf("⚠️ Error obteniendo summaries: %v", summariesErr)
@@ -253,7 +253,7 @@ minuteBucket := time.Now().UTC().Truncate(time.Minute)
 }
 
 // Cambio: helper para leer JSON desde SRS (Firma: Cursor)
-func fetchSRSJSON(url string) (map[string]interface{}, error) {
+func fetchSRSJSONExpect(url string, requireData bool) (map[string]interface{}, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -263,6 +263,16 @@ func fetchSRSJSON(url string) (map[string]interface{}, error) {
 	var payload map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil, err
+	}
+
+	// Cambio: evitar guardar navegación (/api/v1) por error (Firma: Cursor)
+	if _, hasUrls := payload["urls"]; hasUrls {
+		return nil, fmt.Errorf("respuesta de navegación detectada en %s", url)
+	}
+	if requireData {
+		if _, ok := payload["data"]; !ok {
+			return nil, fmt.Errorf("respuesta sin data en %s", url)
+		}
 	}
 
 	return payload, nil

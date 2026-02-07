@@ -15,6 +15,7 @@ thumbnails/*.jpg
 
 # Logs de SRS y Docker
 *.log
+*.txt
 objs/
 
 # Archivos de Sistema y Docker
